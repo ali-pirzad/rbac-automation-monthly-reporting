@@ -1,0 +1,35 @@
+---
+# Variables for RBAC Changes Reporting deployment
+# Update these values for your environment
+
+# Azure region
+location: "westus2"
+
+# Resource group for the Logic App
+resource_group: "rg-rbac-automation"
+
+# Logic App name
+logic_app_name: "la-rbac-changes-report"
+
+# Central Log Analytics workspace (full resource ID)
+log_analytics_workspace_resource_id: "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<LA_RESOURCE_GROUP>/providers/Microsoft.OperationalInsights/workspaces/<WORKSPACE_NAME>"
+
+# Subscriptions to monitor (Activity Logs will be routed to central workspace)
+subscriptions:
+  - id: "<SUBSCRIPTION_ID>"
+    name: "my-subscription"
+
+# Email recipients (semicolon-separated in Logic App)
+recipients:
+  - "team@example.com"
+
+# Sender (shared mailbox or the authorized O365 user)
+sender_address: "reports@example.com"
+
+# Report lookback period in days
+lookback_days: 30
+
+# Schedule configuration
+recurrence_frequency: "Month"    # Month, Week, or Day
+recurrence_interval: 1           # Every 1 month
+recurrence_start_time: "2026-06-01T08:00:00Z"

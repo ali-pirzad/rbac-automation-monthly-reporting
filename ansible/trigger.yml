@@ -1,0 +1,54 @@
+---
+# Ansible Playbook: Trigger Logic App on-demand (for demos/testing)
+#
+# Usage:
+#   ansible-playbook ansible/trigger.yml                            # default 30 days
+#   ansible-playbook ansible/trigger.yml -e "lookback_days=7"      # 7-day lookback
+
+- name: Trigger RBAC Changes Report On-Demand
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - vars/main.yml
+
+  vars:
+    trigger_lookback_days: "{{ lookback_days | default(30) }}"
+
+  tasks:
+    - name: Get Logic App trigger URL
+      azure.azcollection.azure_rm_resource_info:
+        resource_group: "{{ resource_group }}"
+        provider: Logic
+        resource_type: workflows
+        resource_name: "{{ logic_app_name }}/triggers/Recurrence/listCallbackUrl"
+        api_version: "2019-05-01"
+      register: trigger_info
+      ignore_errors: true
+
+    - name: Trigger Logic App run
+      azure.azcollection.azure_rm_resource:
+        resource_group: "{{ resource_group }}"
+        provider: Logic
+        resource_type: workflows
+        resource_name: "{{ logic_app_name }}/triggers/Recurrence/run"
+        api_version: "2019-05-01"
+        method: POST
+        body: {}
+      register: trigger_result
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: |
+          Logic App triggered successfully!
+          The report will be emailed to: {{ recipients | join(', ') }}
+          Lookback period: {{ trigger_lookback_days }} days
+
+          To check the run status:
+            Portal: https://portal.azure.com/#@/resource/subscriptions/{{ subscriptions[0].id }}/resourceGroups/{{ resource_group }}/providers/Microsoft.Logic/workflows/{{ logic_app_name }}/runs
+
+          Alternative manual trigger methods:
+            1. Azure Portal: Open Logic App → Overview → Run Trigger → Recurrence
+            2. Azure CLI:  az logic workflow run trigger -g {{ resource_group }} -n {{ logic_app_name }} --trigger-name Recurrence
+            3. PowerShell: Invoke-AzLogicAppTrigger -ResourceGroupName {{ resource_group }} -Name {{ logic_app_name }} -TriggerName Recurrence

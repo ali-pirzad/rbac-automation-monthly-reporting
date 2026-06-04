@@ -1,0 +1,31 @@
+name: Deploy RBAC Automation
+
+# workflow_dispatch = manual trigger from GitHub UI ("Run workflow" button)
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy RBAC Automation
+        shell: pwsh
+        run: |
+          ./deploy/Deploy-Automation.ps1 -ConfigPath "./config/settings.json"

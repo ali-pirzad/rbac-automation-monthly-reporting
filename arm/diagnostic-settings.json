@@ -1,0 +1,21 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "logAnalyticsWorkspaceId": {
+            "type": "string",
+            "metadata": { "description": "Resource ID of central Log Analytics workspace" }
+        },
+        "subscriptionIds": {
+            "type": "array",
+            "metadata": { "description": "List of subscription IDs to configure diagnostic settings for" }
+        }
+    },
+    "resources": [],
+    "outputs": {
+        "note": {
+            "type": "string",
+            "value": "Subscription-level diagnostic settings must be deployed per-subscription. Use the Ansible playbook or the deploy script to configure these."
+        }
+    }
+}

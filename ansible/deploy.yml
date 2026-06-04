@@ -1,0 +1,117 @@
+---
+# Ansible Playbook: Deploy RBAC Changes Reporting Logic App
+# Deploys:
+#   1. Resource Group
+#   2. Diagnostic Settings on each subscription (Activity Log → Log Analytics)
+#   3. Logic App (ARM template) with scheduled recurrence + email
+#
+# Prerequisites:
+#   - ansible-galaxy collection install azure.azcollection
+#   - pip install azure-mgmt-monitor azure-mgmt-loganalytics azure-mgmt-resource
+#   - Azure Service Principal or az login session
+#
+# Usage:
+#   ansible-playbook ansible/deploy.yml
+#   ansible-playbook ansible/deploy.yml -e "lookback_days=7"        # override lookback
+#   ansible-playbook ansible/deploy.yml --tags logic-app             # only deploy Logic App
+#   ansible-playbook ansible/deploy.yml --tags diagnostic-settings   # only configure diagnostics
+
+- name: Deploy RBAC Changes Reporting Solution
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - vars/main.yml
+
+  tasks:
+    # ─── Resource Group ───────────────────────────────────────────────
+    - name: Create resource group
+      azure.azcollection.azure_rm_resourcegroup:
+        name: "{{ resource_group }}"
+        location: "{{ location }}"
+        tags:
+          purpose: rbac-changes-reporting
+          managed_by: ansible
+      tags: [infra, logic-app]
+
+    # ─── Diagnostic Settings (per subscription) ──────────────────────
+    - name: Configure diagnostic settings on subscriptions
+      azure.azcollection.azure_rm_resource:
+        resource_group: ""
+        provider: Monitor
+        resource_type: diagnosticSettings
+        resource_name: "route-activity-to-central-la"
+        api_version: "2021-05-01-preview"
+        url: "https://management.azure.com/subscriptions/{{ item.id }}/providers/Microsoft.Insights/diagnosticSettings/route-activity-to-central-la?api-version=2021-05-01-preview"
+        method: PUT
+        body:
+          properties:
+            workspaceId: "{{ log_analytics_workspace_resource_id }}"
+            logs:
+              - category: Administrative
+                enabled: true
+              - category: Security
+                enabled: true
+              - category: Policy
+                enabled: true
+      loop: "{{ subscriptions }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.id }})"
+      tags: [infra, diagnostic-settings]
+      ignore_errors: true
+
+    # ─── Deploy Logic App via ARM Template ────────────────────────────
+    - name: Deploy Logic App ARM template
+      azure.azcollection.azure_rm_deployment:
+        resource_group: "{{ resource_group }}"
+        name: "rbac-report-logicapp-{{ ansible_date_time.date | default('deploy') }}"
+        template: "{{ playbook_dir }}/../arm/logic-app.json"
+        parameters:
+          logicAppName:
+            value: "{{ logic_app_name }}"
+          location:
+            value: "{{ location }}"
+          logAnalyticsWorkspaceId:
+            value: "{{ log_analytics_workspace_resource_id }}"
+          recipients:
+            value: "{{ recipients | join(';') }}"
+          senderAddress:
+            value: "{{ sender_address }}"
+          lookbackDays:
+            value: "{{ lookback_days }}"
+          recurrenceFrequency:
+            value: "{{ recurrence_frequency }}"
+          recurrenceInterval:
+            value: "{{ recurrence_interval }}"
+          recurrenceStartTime:
+            value: "{{ recurrence_start_time }}"
+      register: deployment_result
+      tags: [logic-app]
+
+    - name: Display deployment outputs
+      ansible.builtin.debug:
+        msg: |
+          Logic App deployed successfully!
+          Resource ID: {{ deployment_result.deployment.outputs.logicAppId.value | default('N/A') }}
+
+          IMPORTANT: After first deployment, you must authorize the API connections:
+            1. Go to Azure Portal → Resource Group: {{ resource_group }}
+            2. Open the 'azuremonitorlogs' API connection → Edit API connection → Authorize → Save
+            3. Open the 'office365' API connection → Edit API connection → Authorize → Save
+
+          Or run: ansible-playbook ansible/deploy.yml --tags authorize-connections
+      tags: [logic-app]
+
+    # ─── Authorize API Connections (informational) ────────────────────
+    - name: Remind about API connection authorization
+      ansible.builtin.debug:
+        msg: |
+          API connections require one-time interactive authorization in the Azure Portal:
+
+          Log Analytics connection:
+            https://portal.azure.com/#@/resource/subscriptions/{{ subscriptions[0].id }}/resourceGroups/{{ resource_group }}/providers/Microsoft.Web/connections/azuremonitorlogs/edit
+
+          Office 365 connection:
+            https://portal.azure.com/#@/resource/subscriptions/{{ subscriptions[0].id }}/resourceGroups/{{ resource_group }}/providers/Microsoft.Web/connections/office365/edit
+      tags: [authorize-connections]

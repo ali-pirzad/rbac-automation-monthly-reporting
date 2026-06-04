@@ -1,0 +1,70 @@
+// RBAC Changes Query - Run against Central Log Analytics Workspace
+// Returns all role assignment changes (create, delete) and PIM activations
+// Parameter: lookback_days (default 30)
+let lookback = {lookback_days}d;
+let privileged_roles = dynamic(["Owner", "Contributor", "User Access Administrator"]);
+AzureActivity
+| where TimeGenerated >= ago(lookback)
+| where OperationNameValue in~ (
+    "Microsoft.Authorization/roleAssignments/write",
+    "Microsoft.Authorization/roleAssignments/delete",
+    "Microsoft.Authorization/roleAssignmentScheduleRequests/write",
+    "Microsoft.Authorization/roleEligibilityScheduleRequests/write",
+    "Microsoft.Authorization/elevateAccess/action"
+  )
+| where ActivityStatusValue =~ "Success"
+| extend ChangeType = case(
+    OperationNameValue has "delete", "Removed",
+    OperationNameValue has "roleAssignmentScheduleRequests", "PIM Activation",
+    OperationNameValue has "roleEligibilityScheduleRequests", "PIM Eligibility",
+    OperationNameValue has "elevateAccess", "Elevate Access",
+    "Added"
+  )
+| extend ParsedProps = parse_json(Properties)
+| extend RequestBody = parse_json(tostring(ParsedProps.requestbody))
+| extend RoleDefinitionId = coalesce(
+    tostring(RequestBody.properties.roleDefinitionId),
+    tostring(ParsedProps.roleDefinitionId),
+    ""
+  )
+| extend PrincipalId = coalesce(
+    tostring(RequestBody.properties.principalId),
+    tostring(ParsedProps.principalId),
+    ""
+  )
+| extend PrincipalType = coalesce(
+    tostring(RequestBody.properties.principalType),
+    tostring(ParsedProps.principalType),
+    ""
+  )
+| extend Scope = coalesce(
+    tostring(RequestBody.properties.scope),
+    tostring(ParsedProps.scope),
+    _ResourceId
+  )
+// Join with role definition names from the same Activity Log
+| extend RoleDefShortId = extract(@"/roleDefinitions/(.+)$", 1, RoleDefinitionId)
+| join kind=leftouter (
+    AzureActivity
+    | where OperationNameValue =~ "Microsoft.Authorization/roleDefinitions/read"
+    | extend RoleName = tostring(parse_json(Properties).responseBody.properties.roleName)
+    | extend RoleId = extract(@"/roleDefinitions/(.+)$", 1, _ResourceId)
+    | where isnotempty(RoleName)
+    | distinct RoleId, RoleName
+  ) on $left.RoleDefShortId == $right.RoleId
+| extend RoleName = coalesce(RoleName, RoleDefShortId, "Unknown")
+| extend IsPrivileged = RoleName in (privileged_roles)
+| project
+    Timestamp = TimeGenerated,
+    SubscriptionName = SubscriptionId,
+    SubscriptionId,
+    ChangeType,
+    RoleName,
+    IsPrivileged,
+    PrincipalId,
+    PrincipalType,
+    Scope,
+    InitiatedBy = Caller,
+    CorrelationId,
+    Source = iff(ChangeType startswith "PIM", "PIM", "DirectAssignment")
+| order by IsPrivileged desc, Timestamp desc

@@ -1,0 +1,23 @@
+{
+    "logAnalyticsWorkspaceResourceId": "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<LA_RESOURCE_GROUP>/providers/Microsoft.OperationalInsights/workspaces/<WORKSPACE_NAME>",
+    "tenantId": "<TENANT_ID>",
+    "resourceGroup": "rg-rbac-automation",
+    "logicAppName": "la-rbac-changes-report",
+    "location": "westus2",
+    "recipients": [
+        "team@example.com"
+    ],
+    "senderAddress": "reports@example.com",
+    "lookbackDays": 30,
+    "recurrence": {
+        "frequency": "Month",
+        "interval": 1,
+        "startTime": "2026-06-01T08:00:00Z"
+    },
+    "subscriptions": [
+        {
+            "id": "<SUBSCRIPTION_ID>",
+            "name": "my-subscription"
+        }
+    ]
+}
