@@ -1,0 +1,17 @@
+# Actions runner
+actions-runner/
+actions-runner-*/
+
+# Local settings with real values
+config/settings.local.json
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Editor
+.vscode/
+*.swp
+
+# Ansible
+*.retry
